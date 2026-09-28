@@ -31,6 +31,12 @@ npm start
 手機不能直接開電腦的 `localhost`。可用 HTTPS 臨時通道轉送至本機服務，並使用密碼保護預覽：
 
 ```sh
+cloudflared tunnel --url http://127.0.0.1:3001
+```
+
+把通道輸出的 `https://...trycloudflare.com` 設成 `APP_ORIGIN`，在另一個終端啟動：
+
+```sh
 APP_MODE=preview HOST=127.0.0.1 PORT=3001 \
 APP_ORIGIN=https://你的臨時網址 \
 DATABASE_PATH=./data/phone-preview.sqlite \
