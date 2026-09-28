@@ -13,9 +13,9 @@ async function setup(t, options = {}) {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { await new Promise(resolve => server.close(resolve)); app.close(); });
   const base = `http://127.0.0.1:${server.address().port}`;
-  async function call(path, data, cookie = '', customOrigin = options.origin || origin) {
-    const response = await fetch(base + path, { method: data === undefined ? 'GET' : 'POST', headers: { Origin: customOrigin, Cookie: cookie, 'Content-Type': 'application/json' }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
-    return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+  async function call(path, data, cookie = '', customOrigin = options.origin || origin, extraHeaders = {}) {
+    const response = await fetch(base + path, { method: data === undefined ? 'GET' : 'POST', headers: { Origin: customOrigin, Cookie: cookie, 'Content-Type': 'application/json', ...extraHeaders }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
+    return { status: response.status, body: response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.text(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
   async function member() { return (await call('/api/auth/demo', {})).cookie; }
   async function staff(id = 'sample-cafe') { return (await call('/api/staff/login', { merchantId: id, key: 'demo-staff' })).cookie; }
@@ -215,6 +215,21 @@ test('a merchant identity cannot earn the same shop stamp for a second main acco
 test('production fails closed with sample data and missing LINE configuration', () => {
   assert.throws(() => createApp({ mode: 'production' }), /Production requires/);
   assert.throws(() => createApp({ mode: 'production', origin: 'https://example.com', liffId: '123', channelId: '123', mainOaId: '@example' }), /sample campaign/);
+});
+
+test('temporary phone preview requires HTTPS and a password before serving any page or API', async t => {
+  assert.throws(() => createApp({ mode: 'preview', origin: 'http://localhost:3001', previewPassword: '0123456789abcdef' }), /HTTPS APP_ORIGIN/);
+  assert.throws(() => createApp({ mode: 'preview', origin: 'https://preview.example.com' }), /PREVIEW_PASSWORD/);
+  const origin = 'https://preview.example.com';
+  const { call } = await setup(t, { mode: 'preview', origin, previewPassword: '0123456789abcdef' });
+  const auth = { Authorization: `Basic ${Buffer.from('preview:0123456789abcdef').toString('base64')}` };
+  assert.equal((await call('/api/config')).status, 401);
+  assert.equal((await call('/healthz')).status, 401);
+  assert.equal((await call('/api/config', undefined, '', origin, { Authorization: 'Basic wrong' })).status, 401);
+  assert.equal((await call('/api/config', undefined, '', origin, auth)).body.demo, true);
+  const user = await call('/api/auth/demo', {}, '', origin, auth);
+  assert.equal(user.status, 200);
+  assert.equal((await call('/api/me', undefined, user.cookie, origin, auth)).body.stamps.length, 0);
 });
 
 test('LINE verification rejects wrong channel and mismatched subject, permits verified identity only', async t => {

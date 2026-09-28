@@ -26,6 +26,19 @@ npm start
 2. 到工作台登入，勾選已完成的環保杯／MOOVO，產生加分碼。點該碼下的本機示範連結，確認領取環保分。
 3. 在探索店家頁取得三間店的示範好友章。好禮頁可產生兌換碼，由「街角咖啡」工作台查詢與確認核銷。
 
+### 手機臨時預覽
+
+手機不能直接開電腦的 `localhost`。可用 HTTPS 臨時通道轉送至本機服務，並使用密碼保護預覽：
+
+```sh
+APP_MODE=preview HOST=127.0.0.1 PORT=3001 \
+APP_ORIGIN=https://你的臨時網址 \
+DATABASE_PATH=./data/phone-preview.sqlite \
+PREVIEW_PASSWORD=至少16字元的隨機密碼 npm start
+```
+
+連入時瀏覽器帳號是 `preview`，密碼是 `PREVIEW_PASSWORD`。預覽模式只允許本機綁定、HTTPS 網址和密碼；臨時網址與電腦上的服務停止後即失效。請勿用此網址作正式 LINE LIFF Endpoint，也不要用示範模式處理真實會員資料。手機版目前測的是畫面與模擬集章流程；真實 LINE 好友驗證仍須完成下方的頻道與官方帳號串接。
+
 ## 目前規則
 
 | 項目 | 預覽設定 |

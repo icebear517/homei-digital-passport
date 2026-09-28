@@ -9,9 +9,10 @@ const fail = (status, message) => { throw Object.assign(new Error(message), { st
 const text = (value, max = 512) => typeof value === 'string' && value.length <= max ? value : '';
 
 export function createApp(options = {}) {
-  const { mode = 'demo', origin = 'http://localhost:3000', dbPath = ':memory:', liffId = '', channelId = '', mainOaId = '', staffCredentials = {}, merchantLogins = {}, fetcher = fetch, now = Date.now } = options;
+  const { mode = 'demo', origin = 'http://localhost:3000', dbPath = ':memory:', liffId = '', channelId = '', mainOaId = '', staffCredentials = {}, merchantLogins = {}, previewPassword = '', fetcher = fetch, now = Date.now } = options;
   const campaign = options.campaign || JSON.parse(readFileSync(new URL('../config/campaign.json', import.meta.url)));
-  const demo = mode === 'demo';
+  const demo = mode !== 'production';
+  const preview = mode === 'preview';
   const ecoTasks = campaign.ecoTasks || [];
   if (new URL(origin).origin !== origin) throw new Error('APP_ORIGIN must be an origin without path or trailing slash');
   if (new Set(ecoTasks.map(item => item.id)).size !== ecoTasks.length || ecoTasks.some(item => !item.id || !Number.isInteger(item.points) || item.points < 1 || !Number.isInteger(item.dailyLimit) || item.dailyLimit < 1)) throw new Error('Invalid eco task configuration');
@@ -21,7 +22,8 @@ export function createApp(options = {}) {
     if (!shop || !/^@[A-Za-z0-9._-]+$/.test(shop.officialAccountId || '') || !/^\d+$/.test(login.channelId || '') || typeof login.channelSecret !== 'string' || !login.channelSecret || usedChannels.has(login.channelId)) throw new Error('Invalid or duplicate merchant LINE Login configuration');
     usedChannels.add(login.channelId);
   }
-  if (!['demo', 'production'].includes(mode)) throw new Error('Unknown APP_MODE');
+  if (!['demo', 'preview', 'production'].includes(mode)) throw new Error('Unknown APP_MODE');
+  if (preview && (new URL(origin).protocol !== 'https:' || typeof previewPassword !== 'string' || previewPassword.length < 16)) throw new Error('Preview requires HTTPS APP_ORIGIN and a 16+ character PREVIEW_PASSWORD');
   if (!demo && (!liffId || !channelId || !mainOaId || new URL(origin).protocol !== 'https:')) throw new Error('Production requires HTTPS APP_ORIGIN, LIFF_ID, LINE_LOGIN_CHANNEL_ID and MAIN_OA_ID');
   if (!demo && (campaign.sample || campaign.merchants.some(m => m.sample) || campaign.rewards.some(r => r.sample))) throw new Error('Replace sample campaign data before production');
   if (!demo && (!campaign.startsAt || !campaign.endsAt || !Number.isFinite(Date.parse(campaign.startsAt)) || !Number.isFinite(Date.parse(campaign.endsAt)) || Date.parse(campaign.endsAt) <= Date.parse(campaign.startsAt))) throw new Error('Production requires a valid campaign date range');
@@ -56,7 +58,8 @@ export function createApp(options = {}) {
   const ecoTotal = user => get('SELECT COALESCE(SUM(points),0) AS n FROM eco_credits WHERE campaign=? AND user_id=?', campaign.id, user).n;
   const localDay = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now());
   const state = user => ({ user: get('SELECT name,friend FROM users WHERE id=?', user), stamps: all('SELECT merchant,created FROM stamps WHERE campaign=? AND user_id=?', campaign.id, user), ecoPoints: ecoTotal(user), ecoCredits: all('SELECT merchant,task,points,day,created FROM eco_credits WHERE campaign=? AND user_id=? ORDER BY created DESC,id DESC', campaign.id, user), today: localDay(), redemptions: all('SELECT reward,merchant,created FROM redemptions WHERE campaign=? AND user_id=?', campaign.id, user) });
-  const cookie = (token, role, age) => `${role === 'staff' ? 'staff_session' : 'member_session'}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${age}${demo ? '' : '; Secure'}`;
+  const cookie = (token, role, age) => `${role === 'staff' ? 'staff_session' : 'member_session'}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${age}${mode === 'demo' ? '' : '; Secure'}`;
+  const previewAuthorization = preview ? `Basic ${Buffer.from(`preview:${previewPassword}`).toString('base64')}` : '';
   const sessionRow = (req, role) => {
     const name = role === 'staff' ? 'staff_session' : 'member_session';
     const token = (req.headers.cookie || '').split(';').map(c => c.trim()).find(c => c.startsWith(`${name}=`))?.slice(name.length + 1);
@@ -284,8 +287,20 @@ export function createApp(options = {}) {
       res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://static.line-scdn.net; connect-src 'self' https://*.line.me https://*.line-scdn.net https://*.line.biz; img-src 'self' data: https://*.line-scdn.net; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
-      if (!demo) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+      if (mode !== 'demo') res.setHeader('Strict-Transport-Security', 'max-age=31536000');
       try {
+        if (preview) {
+          const supplied = text(req.headers.authorization, 512);
+          const actual = Buffer.from(hash(supplied), 'hex');
+          const expected = Buffer.from(hash(previewAuthorization), 'hex');
+          if (!timingSafeEqual(actual, expected)) {
+            res.statusCode = 401;
+            res.setHeader('WWW-Authenticate', 'Basic realm="Homei phone preview", charset="UTF-8"');
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.end('此預覽需要帳號與密碼');
+            return;
+          }
+        }
         const url = new URL(req.url, origin), path = url.pathname;
         if (path === '/auth/merchant/callback' && req.method === 'GET') { await friendshipCallback(req, res, url); return; }
         if (path.startsWith('/api/')) { const result = await api(req, res, path); res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(result)); return; }
