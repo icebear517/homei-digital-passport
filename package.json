@@ -1,0 +1,14 @@
+{
+  "name": "homei-digital-passport",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "dev": "node --watch --env-file-if-exists=.env server/index.js",
+    "test": "node --test",
+    "check": "node --check server/index.js && node --check server/app.js && node --check public/app.js && node --check public/staff.js"
+  },
+  "dependencies": { "qrcode": "1.5.4" }
+}
