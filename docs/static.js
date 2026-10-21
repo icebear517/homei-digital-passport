@@ -1,4 +1,4 @@
-const stores=[['503-stationery','503 文具店','✎','生活選物'],['demo-cafe','街角咖啡','☕','風味日常'],['demo-craft','織路工坊','✳','手感生活'],['demo-food','巷口好食','♨','在地滋味'],['demo-flower','小鎮花室','✿','生活花藝'],['demo-book','閱讀角落','▤','書香日常']];
+const stores=[['503-stationery','503 文具店','✎','生活選物'],['demo-cafe','卡里善之樹','☂','文化工藝'],['demo-craft','織路工坊','✳','手感生活'],['demo-food','巷口好食','♨','在地滋味'],['demo-flower','小鎮花室','✿','生活花藝'],['demo-book','閱讀角落','▤','書香日常']];
 const prizes=['503 文具店驚喜小禮','和美在地好禮'];
 const key='homei-static-demo-v1';
 let state;
