@@ -13,7 +13,7 @@
   "drawRule": "每集滿 3 間不同店家，可增加 1 次轉盤機會；集滿 6 間可轉 2 次。",
   "merchants": [
     { "id": "503-stationery", "name": "503 文具店", "category": "生活選物", "icon": "✎", "color": "peach", "description": "把日常裡的小靈感，帶回家。", "address": "展示店家｜地址待確認", "hasLineOA": true, "officialAccountId": "", "sample": false },
-    { "id": "demo-cafe", "name": "卡里善之樹", "category": "文化工藝", "icon": "☂", "color": "sage", "description": "用一把傘，收下一枚小鎮印記。", "address": "示範合作店家｜地址待確認", "hasLineOA": true, "officialAccountId": "", "sample": true },
+    { "id": "demo-cafe", "name": "卡里善之樹", "category": "文化工藝", "icon": "☂", "color": "sage", "description": "用一把傘，收下一枚小鎮印記。", "address": "示範合作店家｜地址待確認", "hasLineOA": true, "officialAccountId": "@tlf0508f", "sample": true },
     { "id": "demo-craft", "name": "織路工坊", "category": "手感生活", "icon": "✳", "color": "yellow", "description": "從一條線開始，遇見和美的手感生活。", "address": "示範合作店家｜地址待確認", "hasLineOA": false, "facebookUrl": "", "sample": true }
   ],
   "prizes": [
