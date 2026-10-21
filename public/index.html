@@ -2,24 +2,15 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f5f4eb"><meta name="description" content="數位和美幫，在街角故事裡收集和美的日常。">
-  <title>數位和美幫｜我的探店護照</title>
-  <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/eco.css"><script type="module" src="/app.js"></script>
+  <meta name="theme-color" content="#f5f4eb"><meta name="description" content="數位和美幫數位集章活動">
+  <title>數位和美幫｜數位集章活動</title>
+  <link rel="stylesheet" href="/styles.css"><script type="module" src="/app.js"></script>
 </head>
-<body>
-  <div class="app-shell">
-    <header class="topbar"><a class="brand" href="/" aria-label="數位和美幫首頁"><span class="brand-mark">和</span><span>數位和美幫<small>HOMEI LOCAL PASSPORT</small></span></a><button class="avatar" id="profile-button" aria-label="查看活動說明">?</button></header>
-    <div id="demo-banner" class="demo-banner" hidden>開發預覽 · 店家、任務與獎勵均為示範資料</div>
-    <main id="main"><div class="loading">正在打開你的和美護照…</div></main>
-    <footer class="page-footer">還社社區 × 和美在地夥伴<br><button class="text-button" id="privacy-button">活動與資料使用說明</button></footer>
-    <nav class="bottom-nav" aria-label="主要導覽">
-      <button data-tab="passport" class="selected" aria-current="page"><span>▦</span>我的集章冊</button>
-      <button data-tab="explore"><span>⌁</span>探索店家</button>
-      <button data-tab="eco"><span>♲</span>環保加分</button>
-      <button data-tab="rewards"><span>♧</span>好禮兌換</button>
-    </nav>
-  </div>
-  <dialog id="modal"><div class="dialog-head"><h2 id="modal-title"></h2><button class="close-button" id="close-modal" aria-label="關閉">×</button></div><div id="modal-body"></div></dialog>
-  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-</body>
+<body><div class="app-shell">
+  <header class="topbar"><a class="brand" href="/"><span class="brand-mark">和</span><span>數位和美幫<small>DIGITAL STAMP TOUR</small></span></a><button class="avatar" id="info" aria-label="活動說明">?</button></header>
+  <div id="demo-banner" class="demo-banner" hidden>503 文具店展示版・店家與獎品為示範資料</div>
+  <main id="main"><div class="loading">正在打開你的集章冊…</div></main>
+  <footer class="page-footer">數位和美幫數位集章活動<br><button class="text-button" id="privacy">活動與資料說明</button></footer>
+  <nav class="bottom-nav" aria-label="主要導覽"><button class="selected" data-tab="passport"><span>▦</span>我的集章冊</button><button data-tab="shops"><span>⌁</span>合作店家</button><button data-tab="draw"><span>◉</span>我的轉盤券</button></nav>
+</div><dialog id="modal"><div class="dialog-head"><h2 id="modal-title"></h2><button class="close-button" id="close" aria-label="關閉">×</button></div><div id="modal-body"></div></dialog><div class="toast" id="toast" role="status" aria-live="polite" hidden></div></body>
 </html>

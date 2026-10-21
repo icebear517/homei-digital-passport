@@ -1,24 +1,23 @@
 {
-  "id": "homei-2026-preview",
-  "title": "數位和美幫",
-  "subtitle": "走進街角，收藏和美的日常。",
+  "id": "homei-stamp-2026-demo",
+  "title": "數位和美幫數位集章活動",
+  "subtitle": "掃描、集章、轉出一份和美的小驚喜。",
   "sample": true,
-  "periodLabel": "2026・9—10 月探店月｜示範規則",
+  "periodLabel": "503 文具店展示版｜正式日期待公布",
   "startsAt": null,
   "endsAt": null,
-  "organizer": "還社社區",
+  "organizer": "數位和美幫",
   "privacyContact": "正式上線前請填入主辦單位聯絡方式",
-  "ecoTasks": [
-    { "id": "reusable-cup", "name": "自備環保杯", "icon": "☕", "points": 1, "dailyLimit": 1, "description": "自備杯並於本次消費實際使用，由店員現場確認。" },
-    { "id": "moovo", "name": "騎 MOOVO 探店", "icon": "🚲", "points": 1, "dailyLimit": 1, "description": "出示本人當日 MOOVO 騎乘紀錄，由店員現場確認。" }
-  ],
+  "keyword": "參加數位集章活動",
+  "stampTarget": 3,
+  "drawRule": "每集滿 3 間不同店家，可增加 1 次轉盤機會；集滿 6 間可轉 2 次。",
   "merchants": [
-    { "id": "sample-cafe", "name": "街角咖啡", "category": "風味日常", "icon": "☕", "color": "peach", "description": "跟著咖啡香，認識一間小店和一段在地故事。", "task": "加入店家 LINE 官方帳號，驗證成功後收藏一枚好友章。", "officialAccountId": "", "address": "示範店家・地址待確認", "sample": true },
-    { "id": "sample-craft", "name": "織路工坊", "category": "手感生活", "icon": "✳", "color": "sage", "description": "從一條線開始，摸一摸和美的產業記憶。", "task": "加入店家 LINE 官方帳號，驗證成功後收藏一枚好友章。", "officialAccountId": "", "address": "示範店家・地址待確認", "sample": true },
-    { "id": "sample-food", "name": "巷口好食", "category": "在地滋味", "icon": "♨", "color": "yellow", "description": "走進巷子，找到屬於和美的熟悉滋味。", "task": "加入店家 LINE 官方帳號，驗證成功後收藏一枚好友章。", "officialAccountId": "", "address": "示範店家・地址待確認", "sample": true }
+    { "id": "503-stationery", "name": "503 文具店", "category": "生活選物", "icon": "✎", "color": "peach", "description": "把日常裡的小靈感，帶回家。", "address": "展示店家｜地址待確認", "hasLineOA": true, "officialAccountId": "", "sample": false },
+    { "id": "demo-cafe", "name": "街角咖啡", "category": "風味日常", "icon": "☕", "color": "sage", "description": "跟著咖啡香，收下一枚小鎮印記。", "address": "示範合作店家｜地址待確認", "hasLineOA": true, "officialAccountId": "", "sample": true },
+    { "id": "demo-craft", "name": "織路工坊", "category": "手感生活", "icon": "✳", "color": "yellow", "description": "從一條線開始，遇見和美的手感生活。", "address": "示範合作店家｜地址待確認", "hasLineOA": false, "facebookUrl": "", "sample": true }
   ],
-  "rewards": [
-    { "id": "sample-gift", "name": "和美小心意", "description": "集滿 3 間不同店家的好友章，解鎖一份在地驚喜。品項、數量與兌換地點待確認。", "threshold": 3, "ecoThreshold": 0, "stock": 100, "merchantIds": ["sample-cafe"], "sample": true },
-    { "id": "sample-green-gift", "name": "綠色探店小禮", "description": "好友章加上環保行動，一起累積小鎮的美好。品項與數量待確認。", "threshold": 3, "ecoThreshold": 2, "stock": 50, "merchantIds": ["sample-cafe"], "sample": true }
+  "prizes": [
+    { "id": "demo-503-gift", "name": "503 文具店驚喜小禮", "description": "集滿三枚不同店家章後，可轉出一份限定小禮。", "stock": 30, "redemptionMerchantIds": ["503-stationery"], "expiresAt": null, "instructions": "請於 503 文具店出示此數位券，由店員掃描並完成核銷。", "sample": true },
+    { "id": "demo-local-gift", "name": "和美在地好禮", "description": "一份為探店旅人準備的小小回憶。", "stock": 20, "redemptionMerchantIds": ["503-stationery"], "expiresAt": null, "instructions": "請於 503 文具店出示此數位券，由店員掃描並完成核銷。", "sample": true }
   ]
 }
