@@ -1,59 +1,51 @@
 # 數位和美幫數位集章活動
 
-明日展示版：民眾在合作店家掃 QR、傳送「參加數位集章活動」，點店家 LINE OA 的關鍵字自動回覆連結後，LIFF 自動收下一枚店家章。每集滿 **3 間不同店家** 增加一次轉盤機會：3 枚 1 次、6 枚 2 次、9 枚 3 次。中獎後 LIFF 發出數位券，店員掃券 QR 進入核銷 LIFF，確認交付獎品後完成一次性核銷。
+LINE LIFF 集章、幸運轉盤、數位券與店家核銷系統。
 
-目前設定以 **503 文具店** 為展示店家，另外兩家是可替換的示範店。環保分、MOOVO、好友 API 驗證與舊版兌換碼流程均不在此版本中。
+## 正式流程
+
+1. 店內 QR 導到店家 LINE OA 並預填「參加數位集章活動」；沒有 LINE OA 的店家則直接開啟 Facebook 任務頁。
+2. 店家的自動回應貼入專屬 LIFF 連結。民眾在店家頁按「確認並蓋章」後才收下一枚章。
+3. 每 3 間不同店家增加 1 次轉盤機會；券碼由店員登入 `/staff` 後一次性核銷。
+
+店家清單僅提供 Google Maps 導航；集章 API 必須帶有由伺服器簽署的店內 QR entry token，因此手動輸入店家代號無法蓋章。
 
 ## 本機展示
 
-需要 Node.js 24+：
-
 ```sh
-npm ci
+npm install
 npm start
 ```
 
-- 民眾集章冊：<http://localhost:3000>
-- 503 文具店入口示範：<http://localhost:3000/?shop=503-stationery>
-- 店員核銷／店家 QR 設定：<http://localhost:3000/staff>
-- 展示版店家工作碼：`demo-staff`
-
-展示步驟：
-
-1. 依序開啟三間店家的入口（`?shop=503-stationery`、`?shop=demo-cafe`、`?shop=demo-craft`），集章冊會顯示三枚不同店家章。
-2. 在「我的轉盤券」轉盤，取得數位兌換券與 QR Code；每滿三枚不同店家章可再增加一次機會。
-3. 在店員頁登入 503 文具店，掃券 QR 或以券碼查詢；確認交付獎品後按「確認核銷」。同一張券不能再核銷。
-
-資料存於 `data/passport.sqlite`。展示模式所有人共用同一位示範會員；若要重置展示狀態，請在服務停止後刪除這個檔案。
-
-## 店家要做的事
-
-店家不需交出後台權限，也不需使用主辦後台。主辦會提供：
-
-1. 店內 QR Code：連至該店 LINE 官方帳號，預填「參加數位集章活動」。
-2. 專屬 LIFF 連結：請店家在 LINE Official Account Manager 設為這個關鍵字的自動回應內容。
-3. 店家工作碼：僅供店員掃描民眾數位券後進入核銷頁。
-
-店員登入 `/staff` 後，可取得該店 QR 和自動回應用 LIFF 連結。`config/campaign.json` 的 `officialAccountId` 填入正式 `@LINE_ID` 後，系統會產出帶預填文字的店家 LINE QR；尚未有 LINE OA 的店家，QR 會直接開啟該店的 LIFF 集章入口。
-
-## 活動資料與獎品
-
-活動名稱、關鍵字、集章門檻、店家、獎品、庫存和核銷店都在 `config/campaign.json`。
-
-Google 表單／Google Sheet 在此版的角色是讓店家提報獎品；正式表單網址與 Sheet 權限尚未提供，因此目前以設定檔的兩項展示獎品作為轉盤獎池。取得表單後，可將 Sheet 同步加入獎品資料與庫存管理。
-
-## 正式上線前
-
-- 補上活動日期、聯絡方式、所有正式店家、LINE OA ID、獎品、庫存與券有效期限。
-- 建立主 LIFF、填入 `LIFF_ID`、`LINE_LOGIN_CHANNEL_ID`、HTTPS 網域與各店 SHA-256 工作碼雜湊。
-- 逐店確認關鍵字自動回應內容與 QR 實機流程。
-- 對「直接 LIFF 入口」店家決定現場防轉傳機制；目前每人每店限一章，但 LIFF 連結仍可能被轉傳。
-
-## 驗證
+開啟 <http://localhost:3000/>；店員核銷頁是 <http://localhost:3000/staff>。展示工作碼：`demo-staff`。
 
 ```sh
-npm run check
 npm test
+npm run check
 ```
 
-測試涵蓋單店去重、三店門檻、每人一次轉盤、數位券 QR、指定核銷店、重複核銷拒絕與跨來源寫入拒絕。
+## Coolify 正式環境
+
+1. 在 Coolify 建立 PostgreSQL，將它的內部連線字串設定為 `DATABASE_URL`。
+2. 使用本專案的 `Dockerfile` 部署，綁定 `passport.rainbowhouse.tw`；DNS 指向 Coolify 後即可取得 HTTPS。
+3. 設定下列 Coolify Secrets：
+
+```text
+APP_MODE=production
+HOST=0.0.0.0
+PORT=3000
+APP_ORIGIN=https://passport.rainbowhouse.tw
+DATABASE_URL=<Coolify PostgreSQL internal URL>
+LIFF_ID=<main LIFF ID>
+STAFF_LIFF_ID=<optional staff LIFF ID>
+LINE_LOGIN_CHANNEL_ID=<the LIFF channel ID>
+ENTRY_SIGNING_SECRET=<long random secret>
+GOOGLE_SHEET_ID=1yVYi_vSx9F-2J9fEpWJnMEQuuRGNHUTn5YSH36AvGFA
+GOOGLE_SERVICE_ACCOUNT_JSON=<one-line service account JSON>
+STAFF_CREDENTIALS_JSON=<merchant-id to SHA-256 work-code hash map>
+```
+
+4. 將 Google Sheet 分享給服務帳號 Email，權限只需要「檢視者」。系統啟動及每五分鐘讀取「店家上架管理」與「獎品上架管理」；只有「上架狀態」為 `上架` 的列會公開。
+5. 每位店家用 `/staff` 登入，下載店內 QR 並複製自動回應的 LIFF 連結。LINE OA 店家要填 `LINE @ID`，Facebook 店家要填粉專網址與任務方式 `FACEBOOK`。
+
+不要把工作碼明碼、Google 服務帳號 JSON、資料庫密碼或 LINE Channel Secret 放進 Git。
