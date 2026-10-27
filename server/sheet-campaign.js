@@ -1,4 +1,5 @@
 import { createSign } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 const sheetBase = 'https://sheets.googleapis.com/v4/spreadsheets';
 const clean = value => String(value ?? '').trim();
@@ -14,9 +15,10 @@ const parseDate = value => {
 const normalizeTask = value => clean(value).toUpperCase() === 'FACEBOOK' ? 'FACEBOOK' : 'LINE_OA';
 
 function serviceAccount() {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '';
-  if (!raw) throw new Error('缺少 GOOGLE_SERVICE_ACCOUNT_JSON，無法同步活動上架資料');
-  try { return JSON.parse(raw); } catch { throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON 不是有效 JSON'); }
+  const file = process.env.GOOGLE_SERVICE_ACCOUNT_FILE || '';
+  const raw = file ? readFileSync(file, 'utf8') : process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '';
+  if (!raw) throw new Error('缺少 GOOGLE_SERVICE_ACCOUNT_JSON 或 GOOGLE_SERVICE_ACCOUNT_FILE，無法同步活動上架資料');
+  try { return JSON.parse(raw); } catch { throw new Error(file ? 'GOOGLE_SERVICE_ACCOUNT_FILE 不是有效 JSON' : 'GOOGLE_SERVICE_ACCOUNT_JSON 不是有效 JSON'); }
 }
 
 async function accessToken(credentials, fetcher) {

@@ -41,6 +41,7 @@ STAFF_LIFF_ID=<optional staff LIFF ID>
 LINE_LOGIN_CHANNEL_ID=<the LIFF channel ID>
 ENTRY_SIGNING_SECRET=<long random secret>
 GOOGLE_SHEET_ID=1yVYi_vSx9F-2J9fEpWJnMEQuuRGNHUTn5YSH36AvGFA
+GOOGLE_SERVICE_ACCOUNT_FILE=/app/secrets/google-service-account.json
 GOOGLE_SERVICE_ACCOUNT_JSON=<one-line service account JSON>
 STAFF_CREDENTIALS_JSON=<merchant-id to SHA-256 work-code hash map>
 ```
