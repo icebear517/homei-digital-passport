@@ -8,13 +8,13 @@ const random = () => randomBytes(24).toString('base64url');
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 const text = (value, max = 512) => typeof value === 'string' && value.length <= max ? value.trim() : '';
 
-function assertCampaign(campaign, production) {
+function assertCampaign(campaign, production, allowEmpty = false) {
   if (!campaign || !campaign.id || !Number.isInteger(campaign.stampTarget) || campaign.stampTarget < 1) throw new Error('活動設定不正確');
   if (new Set(campaign.merchants.map(item => item.id)).size !== campaign.merchants.length || new Set(campaign.prizes.map(item => item.id)).size !== campaign.prizes.length) throw new Error('活動資料有重複代號');
   if (production) {
     for (const item of campaign.merchants) if (!item.id || !item.name || (item.taskType === 'FACEBOOK' ? !item.facebookUrl : (!item.officialAccountId && !item.lineOaUrl))) throw new Error('店家上架資料不完整');
     for (const item of campaign.prizes) if (!Number.isInteger(item.stock) || item.stock < 0 || !Array.isArray(item.redemptionMerchantIds) || !item.redemptionMerchantIds.length || item.redemptionMerchantIds.some(id => !campaign.merchants.some(merchant => merchant.id === id))) throw new Error('獎品上架資料不完整');
-    if (campaign.sample || !campaign.merchants.length || !campaign.prizes.length) throw new Error('正式環境需要已上架的店家與獎品資料');
+    if (campaign.sample || (!allowEmpty && (!campaign.merchants.length || !campaign.prizes.length))) throw new Error('正式環境需要已上架的店家與獎品資料');
   }
 }
 
@@ -77,7 +77,7 @@ export async function createApp(options = {}) {
   const assets = new Map([['/', ['index.html', 'text/html']], ['/staff', ['staff.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/staff.js', ['staff.js', 'text/javascript']], ['/styles.css', ['styles.css', 'text/css']]]);
   return {
     close: () => db.close(),
-    async syncCampaign() { if (!sheetSync) return { synced: false }; const next = await sheetSync.load(campaign); assertCampaign(next, !demo); campaign = next; return { synced: true, merchants: campaign.merchants.length, prizes: campaign.prizes.length, at: new Date(now()).toISOString() }; },
+    async syncCampaign() { if (!sheetSync) return { synced: false }; const next = await sheetSync.load(campaign); assertCampaign(next, !demo, true); campaign = next; return { synced: true, merchants: campaign.merchants.length, prizes: campaign.prizes.length, at: new Date(now()).toISOString() }; },
     handler: async (req, res) => {
       res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store'); res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://static.line-scdn.net; connect-src 'self' https://*.line.me https://*.line-scdn.net https://*.line.biz; img-src 'self' data: https://*.facebook.com; style-src 'self'; frame-src https://www.facebook.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       try { const url = new URL(req.url, origin), path = url.pathname; if (path.startsWith('/api/')) { const output = await api(req, res, path); res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(output)); return; } if (path === '/healthz') { res.setHeader('Content-Type', 'application/json'); res.end('{\"ok\":true}'); return; } const asset = assets.get(path); if (req.method !== 'GET' || !asset) fail(404, '找不到頁面'); res.setHeader('Content-Type', `${asset[1]}; charset=utf-8`); res.end(readFileSync(new URL(`../public/${asset[0]}`, import.meta.url))); }
