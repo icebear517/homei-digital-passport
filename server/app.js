@@ -55,7 +55,31 @@ export async function createApp(options = {}) {
   const limit = (key, max) => { const time = now(); for (const [id, item] of rates) if (item.end < time) rates.delete(id); const item = rates.get(key) || { end: time + 60_000, count: 0 }; item.count++; rates.set(key, item); if (item.count > max) fail(429, '操作太頻繁，請稍後再試'); };
   async function body(req) { if (!req.headers['content-type']?.startsWith('application/json')) fail(415, '請使用 JSON 格式'); let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 16_384) fail(413, '資料太大'); } try { const data = JSON.parse(raw || '{}'); if (!data || typeof data !== 'object' || Array.isArray(data)) fail(400, '資料格式不正確'); return data; } catch { fail(400, '資料格式不正確'); } }
   async function line(url, init) { let response; try { response = await fetcher(url, { ...init, signal: AbortSignal.timeout(8000) }); } catch { fail(503, 'LINE 連線暫時無法使用，請稍後重試'); } if (!response.ok) fail(401, 'LINE 登入驗證失敗，請重新登入'); return response.json(); }
-  async function identity(data) { const idToken = text(data.idToken, 8192), accessToken = text(data.accessToken, 4096); if (!idToken || !accessToken) fail(401, '缺少 LINE 登入憑證'); const id = await line('https://api.line.me/oauth2/v2.1/verify', { method: 'POST', body: new URLSearchParams({ id_token: idToken, client_id: channelId }) }); const access = await line(`https://api.line.me/v2/oauth/verify?access_token=${encodeURIComponent(accessToken)}`); if (!id.sub || id.aud !== channelId || !Number.isFinite(id.exp) || id.exp * 1000 <= now() || access.client_id !== channelId || !Number.isFinite(access.expires_in) || access.expires_in <= 0) fail(401, 'LINE 憑證不屬於此活動或已失效'); const profile = await line('https://api.line.me/v2/profile', { headers: { Authorization: `Bearer ${accessToken}` } }); if (profile.userId !== id.sub) fail(401, 'LINE 憑證身分不一致'); return { id: id.sub, name: profile.displayName || '和美旅人' }; }
+  async function identity(data) {
+    const idToken = text(data.idToken, 8192), accessToken = text(data.accessToken, 4096);
+    if (!accessToken && !idToken) fail(401, '缺少 LINE 登入憑證');
+    const validClients = new Set([liffId.split('-')[0], channelId].filter(Boolean));
+    let verifiedClient = liffId.split('-')[0] || channelId, userId = '', displayName = '';
+    if (accessToken) {
+      const access = await line(`https://api.line.me/oauth2/v2.1/verify?access_token=${encodeURIComponent(accessToken)}`);
+      if (!validClients.has(String(access.client_id)) || !Number.isFinite(access.expires_in) || access.expires_in <= 0) fail(401, 'LINE 憑證不屬於此活動或已失效');
+      verifiedClient = String(access.client_id);
+      try {
+        const profile = await line('https://api.line.me/v2/profile', { headers: { Authorization: `Bearer ${accessToken}` } });
+        userId = profile.userId || '';
+        displayName = profile.displayName || '';
+      } catch {}
+    }
+    if (idToken) {
+      const id = await line('https://api.line.me/oauth2/v2.1/verify', { method: 'POST', body: new URLSearchParams({ id_token: idToken, client_id: verifiedClient }) });
+      if (!id.sub || !validClients.has(String(id.aud)) || !Number.isFinite(id.exp) || id.exp * 1000 <= now()) fail(401, 'LINE 憑證不屬於此活動或已失效');
+      if (userId && userId !== id.sub) fail(401, 'LINE 憑證身分不一致');
+      userId = userId || id.sub;
+      displayName = displayName || id.name || '';
+    }
+    if (!userId) fail(401, 'LINE 登入驗證失敗，請重新登入');
+    return { id: userId, name: displayName || '和美旅人' };
+  }
   const collect = async (user, shopId, entryToken) => db.transaction(async store => { active(); const item = merchant(shopId); if (!isMerchantActive(item)) fail(403, '此店家目前未開放集章'); if (!validEntry(shopId, entryToken)) fail(403, '請使用店內 QR Code 進入集章頁'); await store.run('INSERT INTO stamps VALUES (?,?,?,?) ON CONFLICT (campaign,user_id,merchant) DO NOTHING', campaign.id, user, shopId, now()); return state(user, store); });
   async function draw(user) { return db.transaction(async store => { active(); const totalChances = Math.floor(await count(user, store) / campaign.stampTarget); const used = Number((await store.get('SELECT COUNT(*) AS n FROM draw_entries WHERE campaign=? AND user_id=?', campaign.id, user)).n); if (totalChances <= used) fail(403, `每集滿 ${campaign.stampTarget} 間不同店家可增加一次轉盤機會`); const available = []; for (const item of campaign.prizes) if (Number((await store.get('SELECT COUNT(*) AS n FROM coupons WHERE campaign=? AND prize=?', campaign.id, item.id)).n) < item.stock) available.push(item); if (!available.length) fail(409, '本次活動獎品已全數送完'); const item = available[randomInt(available.length)], code = random(), expires = item.expiresAt ? Date.parse(item.expiresAt) : null; await store.run('INSERT INTO coupons (token,campaign,user_id,prize,expires,created) VALUES (?,?,?,?,?,?)', code, campaign.id, user, item.id, Number.isFinite(expires) ? expires : null, now()); await store.run('INSERT INTO draw_entries VALUES (?,?,?,?)', campaign.id, user, code, now()); return { code, item }; }); }
   async function validateCoupon(shopId, code, store) { const coupon = await store.get('SELECT * FROM coupons WHERE token=? AND campaign=?', text(code, 128), campaign.id); if (!coupon) fail(404, '找不到此兌換券'); const item = prize(coupon.prize); if (!item.redemptionMerchantIds.includes(shopId)) fail(403, '此券不能在這間店核銷'); if (coupon.used_at) fail(409, '此券已經核銷'); if (coupon.expires && Number(coupon.expires) <= now()) fail(409, '此券已過有效期限'); return { coupon, item, visitor: (await store.get('SELECT name FROM members WHERE id=?', coupon.user_id))?.name || '活動會員' }; }
