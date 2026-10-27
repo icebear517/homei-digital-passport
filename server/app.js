@@ -12,7 +12,7 @@ function assertCampaign(campaign, production, allowEmpty = false) {
   if (!campaign || !campaign.id || !Number.isInteger(campaign.stampTarget) || campaign.stampTarget < 1) throw new Error('活動設定不正確');
   if (new Set(campaign.merchants.map(item => item.id)).size !== campaign.merchants.length || new Set(campaign.prizes.map(item => item.id)).size !== campaign.prizes.length) throw new Error('活動資料有重複代號');
   if (production) {
-    for (const item of campaign.merchants) if (!item.id || !item.name || (item.taskType === 'FACEBOOK' ? !item.facebookUrl : (!item.officialAccountId && !item.lineOaUrl))) throw new Error('店家上架資料不完整');
+    for (const item of campaign.merchants) if (!item.id || !item.name || (!allowEmpty && (item.taskType === 'FACEBOOK' ? !item.facebookUrl : (!item.officialAccountId && !item.lineOaUrl)))) throw new Error('店家上架資料不完整');
     for (const item of campaign.prizes) if (!Number.isInteger(item.stock) || item.stock < 0 || !Array.isArray(item.redemptionMerchantIds) || !item.redemptionMerchantIds.length || item.redemptionMerchantIds.some(id => !campaign.merchants.some(merchant => merchant.id === id))) throw new Error('獎品上架資料不完整');
     if (campaign.sample || (!allowEmpty && (!campaign.merchants.length || !campaign.prizes.length))) throw new Error('正式環境需要已上架的店家與獎品資料');
   }
@@ -20,7 +20,7 @@ function assertCampaign(campaign, production, allowEmpty = false) {
 
 const publicCampaign = campaign => ({
   id: campaign.id, title: campaign.title, subtitle: campaign.subtitle, periodLabel: campaign.periodLabel, organizer: campaign.organizer, keyword: campaign.keyword, stampTarget: campaign.stampTarget, drawRule: campaign.drawRule,
-  merchants: campaign.merchants.map(({ id, name, category, icon, color, description, address, navigationName, taskType, hours, facebookUrl }) => ({ id, name, category, icon, color, description, address, navigationName, taskType, hours, facebookUrl })),
+  merchants: campaign.merchants.map(({ id, name, category, icon, color, description, address, navigationName, taskType, hours, facebookUrl, lineOaUrl, officialAccountId, giftSummary }) => ({ id, name, category, icon, color, description, address, navigationName, taskType, hours, facebookUrl, lineOaUrl, officialAccountId, giftSummary })),
 });
 
 export async function createApp(options = {}) {
@@ -101,7 +101,26 @@ export async function createApp(options = {}) {
   const assets = new Map([['/', ['index.html', 'text/html']], ['/staff', ['staff.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/staff.js', ['staff.js', 'text/javascript']], ['/styles.css', ['styles.css', 'text/css']]]);
   return {
     close: () => db.close(),
-    async syncCampaign() { if (!sheetSync) return { synced: false }; const next = await sheetSync.load(campaign); assertCampaign(next, !demo, true); campaign = next; return { synced: true, merchants: campaign.merchants.length, prizes: campaign.prizes.length, at: new Date(now()).toISOString() }; },
+    async syncCampaign() {
+      if (!sheetSync) return { synced: false };
+      const next = await sheetSync.load(campaign);
+      assertCampaign(next, !demo, true);
+      campaign = next;
+      const updated = now();
+      for (const item of campaign.merchants) {
+        await db.run(
+          'INSERT INTO merchants (id,name,category,address,hours,task_type,line_oa_url,official_account_id,facebook_url,gift_summary,description,updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (id) DO UPDATE SET name=excluded.name,category=excluded.category,address=excluded.address,hours=excluded.hours,task_type=excluded.task_type,line_oa_url=excluded.line_oa_url,official_account_id=excluded.official_account_id,facebook_url=excluded.facebook_url,gift_summary=excluded.gift_summary,description=excluded.description,updated=excluded.updated',
+          item.id, item.name, item.category || '合作店家', item.address || '', item.hours || '待補', item.taskType || 'LINE_OA', item.lineOaUrl || '', item.officialAccountId || '', item.facebookUrl || '', item.giftSummary || '待補', item.description || '', updated
+        );
+      }
+      for (const prizeItem of campaign.prizes) {
+        await db.run(
+          'INSERT INTO prizes (id,merchant_id,name,description,stock,instructions,updated) VALUES (?,?,?,?,?,?,?) ON CONFLICT (id) DO UPDATE SET merchant_id=excluded.merchant_id,name=excluded.name,description=excluded.description,stock=excluded.stock,instructions=excluded.instructions,updated=excluded.updated',
+          prizeItem.id, prizeItem.redemptionMerchantIds?.[0] || '', prizeItem.name, prizeItem.description || '', prizeItem.stock ?? 0, prizeItem.instructions || '', updated
+        );
+      }
+      return { synced: true, merchants: campaign.merchants.length, prizes: campaign.prizes.length, at: new Date(updated).toISOString() };
+    },
     handler: async (req, res) => {
       res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store'); res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://static.line-scdn.net; connect-src 'self' https://*.line.me https://*.line-scdn.net https://*.line.biz; img-src 'self' data: https://*.facebook.com; style-src 'self'; frame-src https://www.facebook.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       try { const url = new URL(req.url, origin), path = url.pathname; if (path.startsWith('/api/')) { const output = await api(req, res, path); res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(output)); return; } if (path === '/healthz') { res.setHeader('Content-Type', 'application/json'); res.end('{\"ok\":true}'); return; } const asset = assets.get(path); if (req.method !== 'GET' || !asset) fail(404, '找不到頁面'); res.setHeader('Content-Type', `${asset[1]}; charset=utf-8`); res.end(readFileSync(new URL(`../public/${asset[0]}`, import.meta.url))); }

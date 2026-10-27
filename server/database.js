@@ -42,6 +42,29 @@ const schema = `
     used_by TEXT,
     used_at BIGINT
   );
+  CREATE TABLE IF NOT EXISTS merchants (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    address TEXT NOT NULL,
+    hours TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    line_oa_url TEXT NOT NULL,
+    official_account_id TEXT NOT NULL,
+    facebook_url TEXT NOT NULL,
+    gift_summary TEXT NOT NULL,
+    description TEXT NOT NULL,
+    updated BIGINT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS prizes (
+    id TEXT PRIMARY KEY,
+    merchant_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    stock INTEGER NOT NULL,
+    instructions TEXT NOT NULL,
+    updated BIGINT NOT NULL
+  );
   CREATE INDEX IF NOT EXISTS coupons_campaign_prize_idx ON coupons (campaign, prize);
   CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions (expires);
 `;
