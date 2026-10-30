@@ -245,6 +245,24 @@
       "hours": "週一至週日 06：30-13：00",
       "giftSummary": "果香辣椒醬（200克/罐，10罐）",
       "sample": false
+    },
+    {
+      "id": "ruishida-ebike",
+      "name": "睿士達微型電動二輪車",
+      "category": "微型電動車",
+      "icon": "🛵",
+      "color": "peach",
+      "description": "睿士達電動二輪車，在地綠能代步好鄰居。禮品：涼感袖（20份）",
+      "address": "彰化縣和美鎮和光路242號",
+      "navigationName": "睿士達微型電動二輪車",
+      "taskType": "LINE_OA",
+      "hasLineOA": true,
+      "lineOaUrl": "https://page.line.me/293wennz",
+      "officialAccountId": "@293wennz",
+      "facebookUrl": "https://www.facebook.com/睿士達電動微型二輪車",
+      "hours": "週一至週日 10:00—20:00",
+      "giftSummary": "涼感袖（20份）",
+      "sample": false
     }
   ],
   "prizes": [
@@ -402,6 +420,18 @@
       ],
       "expiresAt": null,
       "instructions": "請於 巫記（和美鎮鹿和路六段504號）出示此數位券，由店員確認後核銷。",
+      "sample": false
+    },
+    {
+      "id": "ruishida-cooling-sleeves-20",
+      "name": "睿士達微型電動二輪車｜涼感袖",
+      "description": "睿士達微型電動二輪車涼感袖乙份（共20份）",
+      "stock": 20,
+      "redemptionMerchantIds": [
+        "ruishida-ebike"
+      ],
+      "expiresAt": null,
+      "instructions": "請於 睿士達微型電動二輪車（和美鎮和光路242號）出示此數位券，由店員確認後核銷。",
       "sample": false
     }
   ]

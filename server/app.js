@@ -131,7 +131,18 @@ export async function createApp(options = {}) {
     },
     handler: async (req, res) => {
       res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store'); res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://static.line-scdn.net; connect-src 'self' https://*.line.me https://*.line-scdn.net https://*.line.biz; img-src 'self' data: https://*.facebook.com; style-src 'self'; frame-src https://www.facebook.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
-      try { const url = new URL(req.url, origin), path = url.pathname; if (path.startsWith('/api/')) { const output = await api(req, res, path); res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(output)); return; } if (path === '/healthz') { res.setHeader('Content-Type', 'application/json'); res.end('{\"ok\":true}'); return; } const asset = assets.get(path); if (req.method !== 'GET' || !asset) fail(404, '找不到頁面'); res.setHeader('Content-Type', `${asset[1]}; charset=utf-8`); res.end(readFileSync(new URL(`../public/${asset[0]}`, import.meta.url))); }
+      try { const url = new URL(req.url, origin), path = url.pathname; if (path.startsWith('/api/')) { const output = await api(req, res, path); res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(output)); return; } if (path === '/healthz') { res.setHeader('Content-Type', 'application/json'); res.end('{\"ok\":true}'); return; } if (req.method === 'GET' && path.startsWith('/rich-messages/') && path.endsWith('.png') && !path.includes('..')) {
+        try {
+          const buf = readFileSync(new URL(`../public${path}`, import.meta.url));
+          res.setHeader('Content-Type', 'image/png');
+          res.setHeader('Cache-Control', 'public, max-age=3600');
+          res.end(buf);
+          return;
+        } catch {
+          fail(404, '找不到圖片');
+        }
+      }
+      const asset = assets.get(path); if (req.method !== 'GET' || !asset) fail(404, '找不到頁面'); res.setHeader('Content-Type', `${asset[1]}; charset=utf-8`); res.end(readFileSync(new URL(`../public/${asset[0]}`, import.meta.url))); }
       catch (error) { res.statusCode = error.status || 500; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify({ error: error.status ? error.message : '系統暫時無法處理，請稍後重試' })); if (!error.status) console.error('Request failed:', error.message); }
     },
   };
