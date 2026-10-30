@@ -84,6 +84,9 @@ export class SheetCampaignSync {
     if (!response.ok) throw new Error('無法讀取 Google Sheet；請確認已將工作表分享給服務帳號');
     const payload = await response.json();
     const [formRange = {}, merchantRange = {}, prizeRange = {}] = payload.valueRanges || [];
+    const formSubmittedIds = new Set();
+    const explicitlyActiveIds = new Set();
+    const explicitlyHiddenIds = new Set();
 
     // 1. Merge from 表單回覆 1
     for (const row of rowsToObjects(formRange.values || [])) {
@@ -91,6 +94,7 @@ export class SheetCampaignSync {
       if (!name) continue;
       const existing = [...merchantMap.values()].find(m => m.name.includes(name) || name.includes(m.name));
       const id = existing ? existing.id : `shop-${Buffer.from(name).toString('hex').slice(0, 8)}`;
+      formSubmittedIds.add(id);
       const lineOaUrl = clean(row['LINE 官方帳號連結（例：https://lin.ee/xxxx）']);
       const facebookUrl = clean(row['Facebook 粉絲專頁連結（例：https://www.facebook.com/店家名稱）']);
       const giftName = clean(row['可提供的禮物／優惠內容（例：飲品、商品、折扣或體驗）']) || '禮品待補';
@@ -131,8 +135,12 @@ export class SheetCampaignSync {
       const id = clean(row['店家代號']);
       if (!id) continue;
       if (statusIsHidden(row)) {
+        explicitlyHiddenIds.add(id);
         merchantMap.delete(id);
         continue;
+      }
+      if (clean(row['上架狀態']) === '上架') {
+        explicitlyActiveIds.add(id);
       }
       const prev = merchantMap.get(id) || { id, category: '合作店家', icon: '⌂', color: 'sage', sample: false };
       const name = clean(row['店家名稱']) || prev.name;
@@ -181,11 +189,18 @@ export class SheetCampaignSync {
       });
     }
 
+    // Filter merchants: only keep stores that have filled out 表單回覆 1, or are explicitly '上架' in 店家上架管理
+    const activeMerchants = [...merchantMap.values()].filter(m => {
+      if (explicitlyHiddenIds.has(m.id)) return false;
+      return formSubmittedIds.has(m.id) || explicitlyActiveIds.has(m.id);
+    });
+    const activeMerchantIds = new Set(activeMerchants.map(m => m.id));
+
     return {
       ...seed,
       sample: false,
-      merchants: [...merchantMap.values()],
-      prizes: [...prizeMap.values()].filter(p => p.redemptionMerchantIds?.every(id => merchantMap.has(id))),
+      merchants: activeMerchants,
+      prizes: [...prizeMap.values()].filter(p => p.redemptionMerchantIds?.every(id => activeMerchantIds.has(id))),
     };
   }
 }

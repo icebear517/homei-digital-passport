@@ -107,11 +107,19 @@ export async function createApp(options = {}) {
       assertCampaign(next, !demo, true);
       campaign = next;
       const updated = now();
+      const activeMerchantIds = campaign.merchants.map(item => item.id);
+      if (activeMerchantIds.length) {
+        await db.run(`DELETE FROM merchants WHERE id NOT IN (${activeMerchantIds.map(() => '?').join(',')})`, ...activeMerchantIds);
+      }
       for (const item of campaign.merchants) {
         await db.run(
           'INSERT INTO merchants (id,name,category,address,hours,task_type,line_oa_url,official_account_id,facebook_url,gift_summary,description,updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (id) DO UPDATE SET name=excluded.name,category=excluded.category,address=excluded.address,hours=excluded.hours,task_type=excluded.task_type,line_oa_url=excluded.line_oa_url,official_account_id=excluded.official_account_id,facebook_url=excluded.facebook_url,gift_summary=excluded.gift_summary,description=excluded.description,updated=excluded.updated',
           item.id, item.name, item.category || '合作店家', item.address || '', item.hours || '待補', item.taskType || 'LINE_OA', item.lineOaUrl || '', item.officialAccountId || '', item.facebookUrl || '', item.giftSummary || '待補', item.description || '', updated
         );
+      }
+      const activePrizeIds = campaign.prizes.map(item => item.id);
+      if (activePrizeIds.length) {
+        await db.run(`DELETE FROM prizes WHERE id NOT IN (${activePrizeIds.map(() => '?').join(',')})`, ...activePrizeIds);
       }
       for (const prizeItem of campaign.prizes) {
         await db.run(
