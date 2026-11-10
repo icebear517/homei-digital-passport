@@ -6,8 +6,39 @@ const shop = id => shops().find(item => item.id === id);
 const has = id => me.stamps.some(item => item.merchant === id);
 async function api(path, data) { const response = await fetch(path, { method: data === undefined ? 'GET' : 'POST', headers: data === undefined ? {} : { 'Content-Type': 'application/json' }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) }); const payload = await response.json(); if (!response.ok) throw Error(payload.error); return payload; }
 function toast(message) { clearTimeout(timer); $('#toast').textContent = message; $('#toast').hidden = false; timer = setTimeout(() => { $('#toast').hidden = true; }, 5000); }
-function qr() { document.querySelectorAll('[data-code]').forEach(image => api('/api/coupon/qr', { code: image.dataset.code }).then(result => { image.src = result.qr; }).catch(error => { image.alt = error.message; })); }
-function coupon(item, number) { return `<section class="coupon-card ${item.usedAt ? 'used' : ''}"><span class="eyebrow">${item.usedAt ? 'REDEEMED' : `COUPON ${number}`}</span><h2>${esc(item.prize)}</h2><p>${esc(item.instructions)}</p><img class="qr coupon-qr" data-code="${esc(item.code)}" alt="店員核銷用 QR Code"><code class="code-display">${esc(item.code)}</code>${item.usedAt ? '<p class="success">已核銷 ✓</p>' : ''}</section>`; }
+function qr() {
+  document.querySelectorAll('[data-code]').forEach(image => api('/api/coupon/qr', { code: image.dataset.code }).then(result => { image.src = result.qr; }).catch(error => { image.alt = error.message; }));
+  document.querySelectorAll('[data-toggle-redeem]').forEach(btn => {
+    btn.onclick = () => {
+      const box = document.getElementById(`redeem-box-${btn.dataset.toggleRedeem}`);
+      if (box) box.hidden = !box.hidden;
+    };
+  });
+  document.querySelectorAll('[data-redeem-form]').forEach(form => {
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const code = form.dataset.redeemForm;
+      const input = form.querySelector('input');
+      const submitBtn = form.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      try {
+        me = await api('/api/coupon/redeem-on-device', { code, key: input.value });
+        render();
+        qr();
+        toast('核銷完成 ✓ 感謝店員確認！');
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    };
+  });
+}
+function coupon(item, number) {
+  const sc = item.shortCode || String(item.code || '').slice(0, 6).toUpperCase();
+  const usedTime = item.usedAt ? new Date(item.usedAt).toLocaleString('zh-TW', { hour12: false }) : '';
+  return `<section class="coupon-card ${item.usedAt ? 'used' : ''}"><span class="eyebrow">${item.usedAt ? 'REDEEMED' : `COUPON ${number} · #${esc(sc)}`}</span><h2>${esc(item.prize)}</h2><p>${esc(item.instructions)}</p>${item.usedAt ? `<p class="success"><strong>✅ 已現場核銷完成</strong><br><small>核銷時間：${esc(usedTime)}</small></p>` : `<img class="qr coupon-qr" data-code="${esc(item.code)}" alt="店員核銷用 QR Code"><code class="code-display">券號 #${esc(sc)}<br><small style="font-weight:400;font-size:11px;opacity:.75">${esc(item.code)}</small></code><div style="margin-top:14px"><button type="button" class="secondary full" data-toggle-redeem="${esc(sc)}">店員現場直接核銷（免掃碼）▾</button><form id="redeem-box-${esc(sc)}" data-redeem-form="${esc(item.code)}" class="on-device-redeem" hidden style="margin-top:10px;padding:14px;background:#eef3e3;border-radius:12px;border:1px solid #c5d1b4"><label style="margin-top:0">請由店員輸入店家工作碼核銷</label><input type="password" placeholder="店員輸入工作碼（例：homei-2026）" required autocomplete="off" ${config?.demo ? 'value="demo-staff"' : ''}><button type="submit" class="primary full">確認已交付禮品並核銷</button></form></div>`}</section>`;
+}
 function mapUrl(item) { return item.address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.address || item.navigationName || item.name)}` : ''; }
 function renderEntry(item) {
   const facebook = item.taskType === 'FACEBOOK';

@@ -57,3 +57,31 @@ test('six stores grant two draw opportunities and cross-origin writes fail', asy
 test('production rejects an unprepared sample campaign', async () => {
   await assert.rejects(() => createApp({ mode: 'production', origin: 'https://example.com', liffId: '123', channelId: '456', entrySigningSecret: 'secret' }), /上架資料|正式環境/);
 });
+
+test('staff stats dashboard and on-device staff redemption work accurately', async t => {
+  const { call, member, staff } = await setup(t), visitor = await member();
+  for (const id of ['503-stationery', 'demo-cafe', 'demo-craft']) await call('/api/stamps/collect', { merchantId: id, entry: ticket(id) }, visitor);
+  const draw = await call('/api/draw', {}, visitor);
+  assert.equal(draw.status, 200);
+  const coupon = draw.body.coupons[0];
+  assert.equal(coupon.shortCode.length, 6);
+
+  const clerk = await staff('503-stationery');
+  const statsBefore = await call('/api/staff/stats', undefined, clerk);
+  assert.equal(statsBefore.status, 200);
+  assert.equal(statsBefore.body.shopStats.stampCount, 1);
+  assert.equal(statsBefore.body.totals.drawn, 1);
+  assert.equal(statsBefore.body.totals.redeemed, 0);
+  assert.equal(statsBefore.body.totals.unredeemed, 1);
+
+  const badRedeem = await call('/api/coupon/redeem-on-device', { code: coupon.shortCode, key: 'wrong-key' }, visitor);
+  assert.equal(badRedeem.status, 401);
+
+  const goodRedeem = await call('/api/coupon/redeem-on-device', { code: `#${coupon.shortCode}`, key: 'demo-staff' }, visitor);
+  assert.equal(goodRedeem.status, 200);
+  assert.ok(goodRedeem.body.coupons[0].usedAt);
+
+  const statsAfter = await call('/api/staff/stats', undefined, clerk);
+  assert.equal(statsAfter.body.totals.redeemed, 1);
+  assert.equal(statsAfter.body.totals.unredeemed, 0);
+});

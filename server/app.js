@@ -45,12 +45,35 @@ export async function createApp(options = {}) {
   const entryUrl = id => { const url = new URL(demo ? '/' : `https://liff.line.me/${liffId}/`, origin); url.searchParams.set('shop', id); url.searchParams.set('entry', entrySignature(id)); return url.href; };
   const couponUrl = code => { const url = staffLiffId ? new URL(`https://liff.line.me/${staffLiffId}/`) : new URL('/staff', origin); url.searchParams.set('coupon', code); return url.href; };
   const count = async (user, store = db) => Number((await store.get('SELECT COUNT(*) AS n FROM stamps WHERE campaign=? AND user_id=?', campaign.id, user)).n);
-  const couponState = async (user, token, store = db) => { const coupon = await store.get('SELECT * FROM coupons WHERE token=? AND campaign=? AND user_id=?', token, campaign.id, user); if (!coupon) return null; const item = prize(coupon.prize); return { code: coupon.token, prize: item.name, instructions: item.instructions, expires: coupon.expires ? Number(coupon.expires) : null, usedAt: coupon.used_at ? Number(coupon.used_at) : null }; };
+  const shortCode = token => String(token || '').slice(0, 6).toUpperCase();
+  const findPrize = id => campaign.prizes.find(item => item.id === id);
+  const couponState = async (user, token, store = db) => {
+    const coupon = await store.get('SELECT * FROM coupons WHERE token=? AND campaign=? AND user_id=?', token, campaign.id, user);
+    if (!coupon) return null;
+    const item = findPrize(coupon.prize) || { name: coupon.prize, instructions: '請於合作店家出示此數位券核銷。', redemptionMerchantIds: [] };
+    const shopNames = (item.redemptionMerchantIds || []).map(id => campaign.merchants.find(m => m.id === id)?.name).filter(Boolean).join('、');
+    return { code: coupon.token, shortCode: shortCode(coupon.token), prize: item.name, shopName: shopNames, instructions: item.instructions, expires: coupon.expires ? Number(coupon.expires) : null, usedAt: coupon.used_at ? Number(coupon.used_at) : null };
+  };
   const state = async (user, store = db) => { const stamps = await store.all('SELECT merchant,created FROM stamps WHERE campaign=? AND user_id=? ORDER BY created', campaign.id, user); const entries = await store.all('SELECT coupon FROM draw_entries WHERE campaign=? AND user_id=? ORDER BY created DESC', campaign.id, user); const coupons = (await Promise.all(entries.map(row => couponState(user, row.coupon, store)))).filter(Boolean); const totalChances = Math.floor(stamps.length / campaign.stampTarget); return { user: await store.get('SELECT name FROM members WHERE id=?', user), stamps, stampTarget: campaign.stampTarget, coupons, totalChances, availableDraws: Math.max(0, totalChances - coupons.length) }; };
   const cookie = (token, role, age) => `${role === 'staff' ? 'staff_session' : 'member_session'}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${age}${demo ? '' : '; Secure'}`;
   const sessionRow = async (req, role) => { const name = role === 'staff' ? 'staff_session' : 'member_session'; const token = (req.headers.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith(`${name}=`))?.slice(name.length + 1); const row = token && await db.get('SELECT * FROM sessions WHERE token=? AND role=? AND expires>?', hash(token), role, now()); if (!row) fail(401, '請重新登入'); return row; };
   const session = async (req, role) => (await sessionRow(req, role)).subject;
-  const establish = async (res, subject, role) => { const token = random(); await db.run('DELETE FROM sessions WHERE expires<=?', now()); await db.run('INSERT INTO sessions VALUES (?,?,?,?)', hash(token), role, subject, now() + 7_200_000); res.setHeader('Set-Cookie', cookie(token, role, 7200)); };
+  const establish = async (res, subject, role) => {
+    const token = random();
+    const ttlMs = role === 'staff' ? 30 * 86_400_000 : 7_200_000;
+    const maxAgeSec = Math.floor(ttlMs / 1000);
+    await db.run('DELETE FROM sessions WHERE expires<=?', now());
+    await db.run('INSERT INTO sessions VALUES (?,?,?,?)', hash(token), role, subject, now() + ttlMs);
+    res.setHeader('Set-Cookie', cookie(token, role, maxAgeSec));
+  };
+  const hasAnyStaffCreds = Object.keys(staffCredentials).length > 0;
+  const verifyStaffKey = (merchantId, key) => {
+    const cleanKey = text(key);
+    if (!cleanKey) return false;
+    const expected = demo ? hash('demo-staff') : (staffCredentials[merchantId] || (hasAnyStaffCreds ? hash('homei-2026') : undefined));
+    if (!expected || !/^[a-f0-9]{64}$/i.test(expected)) return false;
+    return timingSafeEqual(Buffer.from(hash(cleanKey), 'hex'), Buffer.from(expected, 'hex'));
+  };
   const rates = new Map();
   const limit = (key, max) => { const time = now(); for (const [id, item] of rates) if (item.end < time) rates.delete(id); const item = rates.get(key) || { end: time + 60_000, count: 0 }; item.count++; rates.set(key, item); if (item.count > max) fail(429, '操作太頻繁，請稍後再試'); };
   async function body(req) { if (!req.headers['content-type']?.startsWith('application/json')) fail(415, '請使用 JSON 格式'); let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 16_384) fail(413, '資料太大'); } try { const data = JSON.parse(raw || '{}'); if (!data || typeof data !== 'object' || Array.isArray(data)) fail(400, '資料格式不正確'); return data; } catch { fail(400, '資料格式不正確'); } }
@@ -80,21 +103,161 @@ export async function createApp(options = {}) {
     if (!userId) fail(401, 'LINE 登入驗證失敗，請重新登入');
     return { id: userId, name: displayName || '和美旅人' };
   }
-  const collect = async (user, shopId, entryToken) => db.transaction(async store => { active(); const item = merchant(shopId); if (!isMerchantActive(item)) fail(403, '此店家目前未開放集章'); if (!validEntry(shopId, entryToken)) fail(403, '請使用店內 QR Code 進入集章頁'); await store.run('INSERT INTO stamps VALUES (?,?,?,?) ON CONFLICT (campaign,user_id,merchant) DO NOTHING', campaign.id, user, shopId, now()); return state(user, store); });
-  async function draw(user) { return db.transaction(async store => { active(); const totalChances = Math.floor(await count(user, store) / campaign.stampTarget); const used = Number((await store.get('SELECT COUNT(*) AS n FROM draw_entries WHERE campaign=? AND user_id=?', campaign.id, user)).n); if (totalChances <= used) fail(403, `每集滿 ${campaign.stampTarget} 間不同店家可增加一次轉盤機會`); const available = []; for (const item of campaign.prizes) if (Number((await store.get('SELECT COUNT(*) AS n FROM coupons WHERE campaign=? AND prize=?', campaign.id, item.id)).n) < item.stock) available.push(item); if (!available.length) fail(409, '本次活動獎品已全數送完'); const item = available[randomInt(available.length)], code = random(), expires = item.expiresAt ? Date.parse(item.expiresAt) : null; await store.run('INSERT INTO coupons (token,campaign,user_id,prize,expires,created) VALUES (?,?,?,?,?,?)', code, campaign.id, user, item.id, Number.isFinite(expires) ? expires : null, now()); await store.run('INSERT INTO draw_entries VALUES (?,?,?,?)', campaign.id, user, code, now()); return { code, item }; }); }
-  async function validateCoupon(shopId, code, store) { const coupon = await store.get('SELECT * FROM coupons WHERE token=? AND campaign=?', text(code, 128), campaign.id); if (!coupon) fail(404, '找不到此兌換券'); const item = prize(coupon.prize); if (!item.redemptionMerchantIds.includes(shopId)) fail(403, '此券不能在這間店核銷'); if (coupon.used_at) fail(409, '此券已經核銷'); if (coupon.expires && Number(coupon.expires) <= now()) fail(409, '此券已過有效期限'); return { coupon, item, visitor: (await store.get('SELECT name FROM members WHERE id=?', coupon.user_id))?.name || '活動會員' }; }
+  const fmtTime = ts => ts ? new Date(Number(ts)).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false }) : '';
+  async function findCoupon(rawCode, store = db) {
+    const cleaned = text(rawCode, 128).replace(/^#/, '');
+    if (!cleaned) return null;
+    const exact = await store.get('SELECT * FROM coupons WHERE token=? AND campaign=?', cleaned, campaign.id);
+    if (exact) return exact;
+    if (cleaned.length >= 6) {
+      const all = await store.all('SELECT * FROM coupons WHERE campaign=?', campaign.id);
+      const upper = cleaned.toUpperCase();
+      return all.find(c => shortCode(c.token) === upper || String(c.token).toUpperCase() === upper) || null;
+    }
+    return null;
+  }
+  async function buildStats(targetShopId = '') {
+    const stampRows = await db.all('SELECT merchant, COUNT(*) AS n FROM stamps WHERE campaign=? GROUP BY merchant', campaign.id);
+    const stampMap = new Map(stampRows.map(r => [r.merchant, Number(r.n)]));
+    const couponRows = await db.all('SELECT c.*, m.name AS visitor_name FROM coupons c LEFT JOIN members m ON c.user_id = m.id WHERE c.campaign=? ORDER BY COALESCE(c.used_at, c.created) DESC', campaign.id);
+    const allShopsOverview = campaign.merchants.map(m => {
+      const shopPrizes = campaign.prizes.filter(p => p.redemptionMerchantIds?.includes(m.id));
+      let stock = 0, drawn = 0, redeemed = 0;
+      for (const p of shopPrizes) {
+        const pCoupons = couponRows.filter(c => c.prize === p.id);
+        stock += Number(p.stock || 0);
+        drawn += pCoupons.length;
+        redeemed += pCoupons.filter(c => c.used_at).length;
+      }
+      const unredeemed = Math.max(0, drawn - redeemed);
+      const remaining = Math.max(0, stock - drawn);
+      return {
+        merchantId: m.id,
+        merchantName: m.name,
+        giftSummary: shopPrizes.map(p => p.name.split('｜')[1] || p.name).join('、') || m.giftSummary || '',
+        stampCount: stampMap.get(m.id) || 0,
+        stock,
+        drawn,
+        redeemed,
+        unredeemed,
+        remaining,
+      };
+    });
+    const totals = allShopsOverview.reduce((acc, s) => ({
+      stampCount: acc.stampCount + s.stampCount,
+      stock: acc.stock + s.stock,
+      drawn: acc.drawn + s.drawn,
+      redeemed: acc.redeemed + s.redeemed,
+      unredeemed: acc.unredeemed + s.unredeemed,
+      remaining: acc.remaining + s.remaining,
+    }), { stampCount: 0, stock: 0, drawn: 0, redeemed: 0, unredeemed: 0, remaining: 0 });
+    const shopStats = allShopsOverview.find(s => s.merchantId === targetShopId) || null;
+    const recentCoupons = targetShopId
+      ? couponRows
+          .filter(c => findPrize(c.prize)?.redemptionMerchantIds?.includes(targetShopId))
+          .slice(0, 50)
+          .map(c => ({
+            code: c.token,
+            shortCode: shortCode(c.token),
+            visitor: c.visitor_name || '活動會員',
+            prize: findPrize(c.prize)?.name || c.prize,
+            created: Number(c.created),
+            usedAt: c.used_at ? Number(c.used_at) : null,
+          }))
+      : [];
+    return { shopStats, recentCoupons, allShopsOverview, totals, rawCoupons: couponRows, updatedAt: now() };
+  }
+  let reportTimer = null;
+  function queueReportSync() {
+    if (!sheetSync || typeof sheetSync.writeReport !== 'function') return;
+    clearTimeout(reportTimer);
+    reportTimer = setTimeout(async () => {
+      try {
+        const stats = await buildStats();
+        const nowStr = fmtTime(stats.updatedAt);
+        const overviewRows = [
+          ...stats.allShopsOverview.map(s => [
+            s.merchantId, s.merchantName, s.giftSummary, s.stampCount, s.stock, s.drawn, s.redeemed, s.unredeemed, s.remaining, nowStr,
+          ]),
+          ['TOTAL', '【全活動合計】', `共 ${stats.allShopsOverview.length} 間合作店家`, stats.totals.stampCount, stats.totals.stock, stats.totals.drawn, stats.totals.redeemed, stats.totals.unredeemed, stats.totals.remaining, nowStr],
+        ];
+        const couponRows = stats.rawCoupons.map(c => {
+          const p = findPrize(c.prize);
+          const shopName = (p?.redemptionMerchantIds || []).map(id => campaign.merchants.find(m => m.id === id)?.name).filter(Boolean).join('、') || c.used_by || '';
+          return [
+            `#${shortCode(c.token)}`,
+            fmtTime(c.created),
+            shopName,
+            p?.name || c.prize,
+            c.visitor_name || '活動會員',
+            c.used_at ? '✅ 已核銷' : '⏳ 待領取',
+            c.used_at ? fmtTime(c.used_at) : '',
+            c.token,
+          ];
+        });
+        await sheetSync.writeReport({ overviewRows, couponRows });
+      } catch (err) {
+        console.error('Report sync error:', err.message);
+      }
+    }, 500);
+    reportTimer.unref?.();
+  }
+  const collect = async (user, shopId, entryToken) => {
+    const out = await db.transaction(async store => { active(); const item = merchant(shopId); if (!isMerchantActive(item)) fail(403, '此店家目前未開放集章'); if (!validEntry(shopId, entryToken)) fail(403, '請使用店內 QR Code 進入集章頁'); await store.run('INSERT INTO stamps VALUES (?,?,?,?) ON CONFLICT (campaign,user_id,merchant) DO NOTHING', campaign.id, user, shopId, now()); return state(user, store); });
+    queueReportSync();
+    return out;
+  };
+  async function draw(user) {
+    const out = await db.transaction(async store => { active(); const totalChances = Math.floor(await count(user, store) / campaign.stampTarget); const used = Number((await store.get('SELECT COUNT(*) AS n FROM draw_entries WHERE campaign=? AND user_id=?', campaign.id, user)).n); if (totalChances <= used) fail(403, `每集滿 ${campaign.stampTarget} 間不同店家可增加一次轉盤機會`); const available = []; for (const item of campaign.prizes) if (Number((await store.get('SELECT COUNT(*) AS n FROM coupons WHERE campaign=? AND prize=?', campaign.id, item.id)).n) < item.stock) available.push(item); if (!available.length) fail(409, '本次活動獎品已全數送完'); const item = available[randomInt(available.length)], code = random(), expires = item.expiresAt ? Date.parse(item.expiresAt) : null; await store.run('INSERT INTO coupons (token,campaign,user_id,prize,expires,created) VALUES (?,?,?,?,?,?)', code, campaign.id, user, item.id, Number.isFinite(expires) ? expires : null, now()); await store.run('INSERT INTO draw_entries VALUES (?,?,?,?)', campaign.id, user, code, now()); return { code, item }; });
+    queueReportSync();
+    return out;
+  }
+  async function validateCoupon(shopId, code, store) { const coupon = await findCoupon(code, store); if (!coupon) fail(404, '找不到此兌換券'); const item = prize(coupon.prize); if (!item.redemptionMerchantIds.includes(shopId)) fail(403, '此券不能在這間店核銷'); if (coupon.used_at) fail(409, '此券已經核銷'); if (coupon.expires && Number(coupon.expires) <= now()) fail(409, '此券已過有效期限'); return { coupon, item, visitor: (await store.get('SELECT name FROM members WHERE id=?', coupon.user_id))?.name || '活動會員' }; }
   async function api(req, res, path) {
     if (req.method === 'GET' && path === '/api/config') return { campaign: publicCampaign(campaign), demo, liffId, origin };
     if (req.method === 'GET' && path === '/api/me') return state(await session(req, 'member'));
     if (req.method === 'GET' && path === '/api/staff/me') return { merchant: merchant(await session(req, 'staff')) };
+    if (req.method === 'GET' && path === '/api/staff/stats') { const shop = await session(req, 'staff'); const { shopStats, recentCoupons, allShopsOverview, totals, updatedAt } = await buildStats(shop); return { shopStats, recentCoupons, allShopsOverview, totals, updatedAt }; }
     if (req.method === 'GET' && path === '/api/staff/entry') { const item = merchant(await session(req, 'staff')); const liffLink = entryUrl(item.id); const lineLink = item.officialAccountId ? `https://line.me/R/oaMessage/${encodeURIComponent(item.officialAccountId)}/?${encodeURIComponent(campaign.keyword)}` : null; return { keyword: campaign.keyword, liffLink, lineLink, qr: await QRCode.toDataURL(lineLink || liffLink, { width: 420, margin: 2, errorCorrectionLevel: 'M' }) }; }
     if (req.method !== 'POST') fail(404, '找不到此功能'); if (req.headers.origin !== origin) fail(403, '請從活動頁面操作'); limit(`all:${req.socket.remoteAddress}`, 180); const data = await body(req);
     if (path === '/api/auth/demo' || path === '/api/auth/line') { if (path.endsWith('/demo') && !demo) fail(404, '找不到此功能'); const user = path.endsWith('/demo') ? { id: 'demo-visitor', name: '和美旅人' } : await identity(data); await db.run('INSERT INTO members VALUES (?,?,?) ON CONFLICT (id) DO UPDATE SET name=excluded.name,updated=excluded.updated', user.id, user.name, now()); await establish(res, user.id, 'member'); return state(user.id); }
     if (path === '/api/stamps/collect') return collect(await session(req, 'member'), text(data.merchantId), text(data.entry, 128));
     if (path === '/api/coupon/qr') { const user = await session(req, 'member'), coupon = await couponState(user, text(data.code, 128)); if (!coupon) fail(404, '找不到此數位券'); return { qr: await QRCode.toDataURL(couponUrl(coupon.code), { width: 420, margin: 2, errorCorrectionLevel: 'M' }) }; }
+    if (path === '/api/coupon/redeem-on-device') {
+      const user = await session(req, 'member');
+      limit(`redeem-device:${user}`, 20);
+      const out = await db.transaction(async store => {
+        const coupon = await findCoupon(data.code, store);
+        if (!coupon || coupon.user_id !== user) fail(404, '找不到此數位券');
+        const item = prize(coupon.prize);
+        if (coupon.used_at) fail(409, '此券已經核銷');
+        if (coupon.expires && Number(coupon.expires) <= now()) fail(409, '此券已過有效期限');
+        const matchedShop = (item.redemptionMerchantIds || []).find(id => verifyStaffKey(id, data.key));
+        if (!matchedShop) fail(401, '店家工作碼不正確，請由該店店員輸入');
+        const changed = await store.run('UPDATE coupons SET used_by=?,used_at=? WHERE token=? AND used_at IS NULL', matchedShop, now(), coupon.token);
+        if (Number(changed.rowCount ?? changed.changes) !== 1) fail(409, '此券已被核銷');
+        return state(user, store);
+      });
+      queueReportSync();
+      return out;
+    }
     if (path === '/api/draw') { const user = await session(req, 'member'); limit(`draw:${user}`, 5); const result = await draw(user); return { ...await state(user), won: { name: result.item.name, description: result.item.description }, qr: await QRCode.toDataURL(couponUrl(result.code), { width: 420, margin: 2, errorCorrectionLevel: 'M' }) }; }
-    if (path === '/api/staff/login') { limit(`staff-login:${req.socket.remoteAddress}`, 10); const id = text(data.merchantId), key = text(data.key), expected = demo ? hash('demo-staff') : staffCredentials[id]; merchant(id); if (!expected || !/^[a-f0-9]{64}$/i.test(expected) || !timingSafeEqual(Buffer.from(hash(key), 'hex'), Buffer.from(expected, 'hex'))) fail(401, '店家或工作碼不正確'); await establish(res, id, 'staff'); return { merchant: merchant(id) }; }
-    if (path === '/api/staff/coupons/lookup' || path === '/api/staff/coupons/redeem') { const shop = await session(req, 'staff'); limit(`coupon:${shop}`, 30); return db.transaction(async store => { const result = await validateCoupon(shop, data.code, store); const output = { visitor: result.visitor, prize: result.item.name, instructions: result.item.instructions, expires: result.coupon.expires ? Number(result.coupon.expires) : null }; if (path.endsWith('/redeem')) { const changed = await store.run('UPDATE coupons SET used_by=?,used_at=? WHERE token=? AND used_at IS NULL', shop, now(), result.coupon.token); if (Number(changed.rowCount ?? changed.changes) !== 1) fail(409, '此券已被其他店員核銷'); } return output; }); }
+    if (path === '/api/staff/login') { limit(`staff-login:${req.socket.remoteAddress}`, 10); const id = text(data.merchantId), key = text(data.key); merchant(id); if (!verifyStaffKey(id, key)) fail(401, '店家或工作碼不正確'); await establish(res, id, 'staff'); return { merchant: merchant(id) }; }
+    if (path === '/api/staff/coupons/lookup' || path === '/api/staff/coupons/redeem') {
+      const shop = await session(req, 'staff');
+      limit(`coupon:${shop}`, 30);
+      const out = await db.transaction(async store => {
+        const result = await validateCoupon(shop, data.code, store);
+        const output = { visitor: result.visitor, prize: result.item.name, shortCode: shortCode(result.coupon.token), code: result.coupon.token, instructions: result.item.instructions, expires: result.coupon.expires ? Number(result.coupon.expires) : null };
+        if (path.endsWith('/redeem')) {
+          const changed = await store.run('UPDATE coupons SET used_by=?,used_at=? WHERE token=? AND used_at IS NULL', shop, now(), result.coupon.token);
+          if (Number(changed.rowCount ?? changed.changes) !== 1) fail(409, '此券已被其他店員核銷');
+        }
+        return output;
+      });
+      if (path.endsWith('/redeem')) queueReportSync();
+      return out;
+    }
     if (path === '/api/logout' || path === '/api/staff/logout') { const role = path.includes('/staff/') ? 'staff' : 'member', row = await sessionRow(req, role); await db.run('DELETE FROM sessions WHERE token=?', row.token); res.setHeader('Set-Cookie', cookie('', role, 0)); return { ok: true }; }
     fail(404, '找不到此功能');
   }
@@ -127,6 +290,7 @@ export async function createApp(options = {}) {
           prizeItem.id, prizeItem.redemptionMerchantIds?.[0] || '', prizeItem.name, prizeItem.description || '', prizeItem.stock ?? 0, prizeItem.instructions || '', updated
         );
       }
+      queueReportSync();
       return { synced: true, merchants: campaign.merchants.length, prizes: campaign.prizes.length, at: new Date(updated).toISOString() };
     },
     handler: async (req, res) => {

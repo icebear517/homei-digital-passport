@@ -203,4 +203,61 @@ export class SheetCampaignSync {
       prizes: [...prizeMap.values()].filter(p => p.redemptionMerchantIds?.every(id => activeMerchantIds.has(id))),
     };
   }
+
+  async writeReport({ overviewRows = [], couponRows = [] } = {}) {
+    if (!this.spreadsheetId) return { updated: false };
+    const credentials = serviceAccount();
+    const token = await accessToken(credentials, this.fetcher);
+    const metaRes = await this.fetcher(`${sheetBase}/${encodeURIComponent(this.spreadsheetId)}?fields=sheets.properties`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!metaRes.ok) return { updated: false };
+    const meta = await metaRes.json();
+    const existingTitles = new Set((meta.sheets || []).map(s => s.properties?.title));
+    const requests = [];
+    for (const title of ['即時兌換統計看板', '中獎與核銷明細紀錄']) {
+      if (!existingTitles.has(title)) {
+        requests.push({ addSheet: { properties: { title, gridProperties: { frozenRowCount: 1 } } } });
+      }
+    }
+    if (requests.length) {
+      await this.fetcher(`${sheetBase}/${encodeURIComponent(this.spreadsheetId)}:batchUpdate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    }
+
+    const overviewValues = [
+      ['店家代號', '店家名稱', '禮品／優惠內容', '累計集章人數', '提供總數', '已被抽中數', '已到店核銷數', '尚未領取數', '獎池剩餘可抽', '最後更新時間'],
+      ...overviewRows,
+    ];
+    const couponValues = [
+      ['6碼短券號', '中獎時間', '所屬店家', '獎品內容', '中獎會員', '核銷狀態', '核銷時間', '完整券碼'],
+      ...(couponRows.length ? couponRows : [['尚無紀錄', '', '', '', '', '', '', '']]),
+    ];
+
+    await this.fetcher(`${sheetBase}/${encodeURIComponent(this.spreadsheetId)}/values:batchClear`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ranges: ['即時兌換統計看板!A1:J100', '中獎與核銷明細紀錄!A1:H1000'] }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    await this.fetcher(`${sheetBase}/${encodeURIComponent(this.spreadsheetId)}/values:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        valueInputOption: 'USER_ENTERED',
+        data: [
+          { range: '即時兌換統計看板!A1', values: overviewValues },
+          { range: '中獎與核銷明細紀錄!A1', values: couponValues },
+        ],
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    return { updated: true };
+  }
 }
