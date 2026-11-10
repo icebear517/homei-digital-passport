@@ -263,6 +263,24 @@
       "hours": "週一至週日 10:00—20:00",
       "giftSummary": "涼感袖（20份）",
       "sample": false
+    },
+    {
+      "id": "chunsheng-pharmacy",
+      "name": "春生藥局愛民店",
+      "category": "中西藥局",
+      "icon": "🌿",
+      "color": "sage",
+      "description": "1949年創立跨越四代的中西整合健保特約藥局。禮品：中藥足浴包單入+中藥折價券（50份）",
+      "address": "彰化縣和美鎮愛民路106號",
+      "navigationName": "春生藥局愛民店",
+      "taskType": "LINE_OA",
+      "hasLineOA": true,
+      "lineOaUrl": "https://line.me/R/ti/p/@heu4795u",
+      "officialAccountId": "@heu4795u",
+      "facebookUrl": "https://www.facebook.com/profile.php?id=100057503766700",
+      "hours": "週一至週日 08:30—21:30",
+      "giftSummary": "中藥足浴包單入+中藥折價券（50份）",
+      "sample": false
     }
   ],
   "prizes": [
@@ -432,6 +450,18 @@
       ],
       "expiresAt": null,
       "instructions": "請於 睿士達微型電動二輪車（和美鎮和光路242號）出示此數位券，由店員確認後核銷。",
+      "sample": false
+    },
+    {
+      "id": "chunsheng-footbath-50",
+      "name": "春生藥局愛民店｜中藥足浴包單入+中藥折價券",
+      "description": "春生藥局中藥足浴包單入+中藥折價券乙份（共50份）",
+      "stock": 50,
+      "redemptionMerchantIds": [
+        "chunsheng-pharmacy"
+      ],
+      "expiresAt": null,
+      "instructions": "請於 春生藥局愛民店（和美鎮愛民路106號）出示此數位券，由店員確認後核銷。",
       "sample": false
     }
   ]
