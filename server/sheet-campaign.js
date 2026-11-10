@@ -77,16 +77,22 @@ export class SheetCampaignSync {
 
     const credentials = serviceAccount();
     const token = await accessToken(credentials, this.fetcher);
-    const ranges = ['表單回覆 1!A:J', '店家上架管理!A:N', '獎品上架管理!A:I'];
+    const ranges = ['表單回覆 1!A:J', '店家上架管理!A:O', '獎品上架管理!A:I', '店家集章連結對照表!A:L'];
     const url = new URL(`${sheetBase}/${encodeURIComponent(this.spreadsheetId)}/values:batchGet`);
     for (const range of ranges) url.searchParams.append('ranges', range);
     const response = await this.fetcher(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(12_000) });
     if (!response.ok) throw new Error('無法讀取 Google Sheet；請確認已將工作表分享給服務帳號');
     const payload = await response.json();
-    const [formRange = {}, merchantRange = {}, prizeRange = {}] = payload.valueRanges || [];
+    const [formRange = {}, merchantRange = {}, prizeRange = {}, linkRange = {}] = payload.valueRanges || [];
     const formSubmittedIds = new Set();
     const explicitlyActiveIds = new Set();
     const explicitlyHiddenIds = new Set();
+    const staffCodesFromLinkTab = new Map();
+    for (const row of rowsToObjects(linkRange.values || [])) {
+      const id = clean(row['店家代號']);
+      const code = clean(row['店家核銷工作碼'] || row['店家工作碼']);
+      if (id && code) staffCodesFromLinkTab.set(id, code);
+    }
 
     // 1. Merge from 表單回覆 1
     for (const row of rowsToObjects(formRange.values || [])) {
@@ -158,10 +164,15 @@ export class SheetCampaignSync {
         facebookUrl: clean(row['Facebook 粉專連結']) || prev.facebookUrl || '',
         hours: clean(row['營業時間']) || prev.hours || '待補',
         description: clean(row['公開簡介']) || prev.description || '一起收下這一站的和美印記。',
+        staffCode: clean(row['店家核銷工作碼'] || row['店家工作碼']) || staffCodesFromLinkTab.get(id) || prev.staffCode || '',
         startsAt: parseDate(row['有效起日']) || prev.startsAt || null,
         endsAt: parseDate(row['有效迄日']) || prev.endsAt || null,
         sample: false,
       });
+    }
+    for (const [id, code] of staffCodesFromLinkTab) {
+      const m = merchantMap.get(id);
+      if (m && !m.staffCode) m.staffCode = code;
     }
 
     // 3. Merge from 獎品上架管理
@@ -231,18 +242,18 @@ export class SheetCampaignSync {
     }
 
     const overviewValues = [
-      ['店家代號', '店家名稱', '禮品／優惠內容', '累計集章人數', '提供總數', '已被抽中數', '已到店核銷數', '尚未領取數', '獎池剩餘可抽', '最後更新時間'],
+      ['店家代號', '店家名稱', '4碼核銷工作碼', '禮品／優惠內容', '累計集章人數', '提供總數', '已被抽中數', '已到店核銷數', '尚未領取數', '獎池剩餘可抽', '最後更新時間'],
       ...overviewRows,
     ];
     const couponValues = [
-      ['6碼短券號', '中獎時間', '所屬店家', '獎品內容', '中獎會員', '核銷狀態', '核銷時間', '完整券碼'],
-      ...(couponRows.length ? couponRows : [['尚無紀錄', '', '', '', '', '', '', '']]),
+      ['6碼數字券碼', '中獎時間', '所屬店家', '獎品內容', '中獎會員', '核銷狀態', '核銷時間'],
+      ...(couponRows.length ? couponRows : [['尚無紀錄', '', '', '', '', '', '']]),
     ];
 
     await this.fetcher(`${sheetBase}/${encodeURIComponent(this.spreadsheetId)}/values:batchClear`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ranges: ['即時兌換統計看板!A1:J100', '中獎與核銷明細紀錄!A1:H1000'] }),
+      body: JSON.stringify({ ranges: ['即時兌換統計看板!A1:K100', '中獎與核銷明細紀錄!A1:H1000'] }),
       signal: AbortSignal.timeout(10_000),
     });
 
@@ -250,7 +261,7 @@ export class SheetCampaignSync {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        valueInputOption: 'USER_ENTERED',
+        valueInputOption: 'RAW',
         data: [
           { range: '即時兌換統計看板!A1', values: overviewValues },
           { range: '中獎與核銷明細紀錄!A1', values: couponValues },

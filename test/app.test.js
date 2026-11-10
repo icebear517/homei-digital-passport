@@ -64,7 +64,8 @@ test('staff stats dashboard and on-device staff redemption work accurately', asy
   const draw = await call('/api/draw', {}, visitor);
   assert.equal(draw.status, 200);
   const coupon = draw.body.coupons[0];
-  assert.equal(coupon.shortCode.length, 6);
+  assert.match(coupon.shortCode, /^\d{6}$/);
+  assert.match(coupon.code, /^\d{6}$/);
 
   const clerk = await staff('503-stationery');
   const statsBefore = await call('/api/staff/stats', undefined, clerk);
@@ -74,10 +75,10 @@ test('staff stats dashboard and on-device staff redemption work accurately', asy
   assert.equal(statsBefore.body.totals.redeemed, 0);
   assert.equal(statsBefore.body.totals.unredeemed, 1);
 
-  const badRedeem = await call('/api/coupon/redeem-on-device', { code: coupon.shortCode, key: 'wrong-key' }, visitor);
+  const badRedeem = await call('/api/coupon/redeem-on-device', { code: coupon.shortCode, key: '9999' }, visitor);
   assert.equal(badRedeem.status, 401);
 
-  const goodRedeem = await call('/api/coupon/redeem-on-device', { code: `#${coupon.shortCode}`, key: 'demo-staff' }, visitor);
+  const goodRedeem = await call('/api/coupon/redeem-on-device', { code: coupon.shortCode, key: '0503' }, visitor);
   assert.equal(goodRedeem.status, 200);
   assert.ok(goodRedeem.body.coupons[0].usedAt);
 

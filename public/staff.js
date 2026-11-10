@@ -46,8 +46,8 @@ function renderLogin() {
       <form id="login">
         <label for="merchant">選擇合作店家</label>
         <select id="merchant">${config.campaign.merchants.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select>
-        <label for="key">店家工作碼</label>
-        <input id="key" type="password" required autocomplete="current-password" placeholder="請輸入工作碼（例：homei-2026）" ${config.demo ? 'value="demo-staff"' : ''}>
+        <label for="key">店家工作碼（4 碼數字）</label>
+        <input id="key" type="password" inputmode="numeric" required autocomplete="current-password" placeholder="請輸入 4 碼數字工作碼（例：0503）" ${config.demo ? 'value="demo-staff"' : ''}>
         <button class="primary full">登入核銷與庫存後台</button>
       </form>
     </section>
@@ -95,11 +95,11 @@ function renderDesk() {
     </section>
 
     <section class="panel">
-      <h2>🔍 掃描或輸入券號核銷</h2>
-      <p>可掃描民眾手機上的數位券 QR Code，或直接輸入券面上的 <strong>6 碼短券號</strong>（例：<code>#A1B2C3</code>），也可直接在民眾手機上點選「店員現場核銷」。</p>
-      <label for="coupon">兌換券碼（6 碼短券號或完整券碼）</label>
+      <h2>🔍 掃描或輸入 6 碼數字券碼核銷</h2>
+      <p>可掃描民眾手機上的數位券 QR Code，或直接輸入券面上的 <strong>6 碼數字券碼</strong>（例：<code>582914</code>），也可直接在民眾手機上點選「店員現場核銷」。</p>
+      <label for="coupon">兌換券碼（6 碼數字）</label>
       <div style="display:flex;gap:8px">
-        <input id="coupon" value="${esc(pendingCode)}" autocomplete="off" placeholder="輸入 6 碼短券號（例：A1B2C3）或掃碼帶入" style="margin-bottom:0;flex:1">
+        <input id="coupon" inputmode="numeric" value="${esc(pendingCode)}" autocomplete="off" placeholder="輸入 6 碼數字券碼（例：582914）或掃碼帶入" style="margin-bottom:0;flex:1">
         <button id="lookup" class="primary" style="white-space:nowrap;min-height:46px">查詢此券</button>
       </div>
       <div id="result"></div>
