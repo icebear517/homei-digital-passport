@@ -244,6 +244,7 @@
       "facebookUrl": "https://www.facebook.com/share/p/1FDH4Ge2sZ/",
       "hours": "週一至週日 06：30-13：00",
       "giftSummary": "果香辣椒醬（200克/罐，10罐）",
+      "hidden": true,
       "sample": false
     },
     {
@@ -262,6 +263,7 @@
       "facebookUrl": "https://www.facebook.com/睿士達電動微型二輪車",
       "hours": "週一至週日 10:00—20:00",
       "giftSummary": "涼感袖（20份）",
+      "hidden": true,
       "sample": false
     },
     {
@@ -280,6 +282,7 @@
       "facebookUrl": "https://www.facebook.com/profile.php?id=100057503766700",
       "hours": "週一至週日 08:30—21:30",
       "giftSummary": "中藥足浴包單入+中藥折價券（50份）",
+      "hidden": true,
       "sample": false
     }
   ],

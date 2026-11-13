@@ -7,7 +7,15 @@ const rowsToObjects = values => {
   const [headers = [], ...rows] = values;
   return rows.filter(row => row.some(cell => clean(cell))).map(row => Object.fromEntries(headers.map((header, index) => [clean(header), clean(row[index])])));
 };
-const statusIsHidden = row => clean(row['上架狀態']) === '下架';
+const getStatus = row => clean(row['上架'] || row['上架狀態']);
+const statusIsHidden = row => {
+  const s = getStatus(row);
+  return s === '下架' || s.startsWith('下架') || s.toUpperCase() === 'FALSE' || s === '否' || s === '0';
+};
+const statusIsActive = row => {
+  const s = getStatus(row);
+  return s === '上架' || s.startsWith('上架') || s.toUpperCase() === 'TRUE' || s === '是' || s === '1';
+};
 const parseDate = value => {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
@@ -72,12 +80,19 @@ export class SheetCampaignSync {
     const prizeMap = new Map((seed.prizes || []).map(p => [p.id, { ...p, sample: false }]));
 
     if (!this.spreadsheetId) {
-      return { ...seed, sample: false, merchants: [...merchantMap.values()], prizes: [...prizeMap.values()] };
+      const activeMerchants = [...merchantMap.values()].filter(m => !m.hidden);
+      const activeIds = new Set(activeMerchants.map(m => m.id));
+      return {
+        ...seed,
+        sample: false,
+        merchants: activeMerchants,
+        prizes: [...prizeMap.values()].filter(p => p.redemptionMerchantIds?.every(id => activeIds.has(id))),
+      };
     }
 
     const credentials = serviceAccount();
     const token = await accessToken(credentials, this.fetcher);
-    const ranges = ['表單回覆 1!A:J', '店家上架管理!A:O', '獎品上架管理!A:I', '店家集章連結對照表!A:L'];
+    const ranges = ['表單回覆 1!A:K', '店家上架管理!A:O', '獎品上架管理!A:I', '店家集章連結對照表!A:M'];
     const url = new URL(`${sheetBase}/${encodeURIComponent(this.spreadsheetId)}/values:batchGet`);
     for (const range of ranges) url.searchParams.append('ranges', range);
     const response = await this.fetcher(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(12_000) });
@@ -86,21 +101,33 @@ export class SheetCampaignSync {
     const [formRange = {}, merchantRange = {}, prizeRange = {}, linkRange = {}] = payload.valueRanges || [];
     const formSubmittedIds = new Set();
     const explicitlyActiveIds = new Set();
-    const explicitlyHiddenIds = new Set();
+    const explicitlyHiddenIds = new Set((seed.merchants || []).filter(m => m.hidden).map(m => m.id));
+    const hiddenInFormOrLink = new Set();
     const staffCodesFromLinkTab = new Map();
     for (const row of rowsToObjects(linkRange.values || [])) {
       const id = clean(row['店家代號']);
       const code = clean(row['店家核銷工作碼'] || row['店家工作碼']);
       if (id && code) staffCodesFromLinkTab.set(id, code);
+      if (id && statusIsHidden(row)) {
+        explicitlyHiddenIds.add(id);
+        hiddenInFormOrLink.add(id);
+      }
     }
 
     // 1. Merge from 表單回覆 1
+    const formHeaders = (formRange.values || [])[0] || [];
+    const formHasStatusCol = formHeaders.some(h => clean(h) === '上架' || clean(h) === '上架狀態');
     for (const row of rowsToObjects(formRange.values || [])) {
       const name = clean(row['店家名稱']);
       if (!name) continue;
       const existing = [...merchantMap.values()].find(m => m.name.includes(name) || name.includes(m.name));
       const id = existing ? existing.id : `shop-${Buffer.from(name).toString('hex').slice(0, 8)}`;
-      formSubmittedIds.add(id);
+      if (statusIsHidden(row)) {
+        explicitlyHiddenIds.add(id);
+        hiddenInFormOrLink.add(id);
+      } else if (!formHasStatusCol || statusIsActive(row)) {
+        formSubmittedIds.add(id);
+      }
       const lineOaUrl = clean(row['LINE 官方帳號連結（例：https://lin.ee/xxxx）']);
       const facebookUrl = clean(row['Facebook 粉絲專頁連結（例：https://www.facebook.com/店家名稱）']);
       const giftName = clean(row['可提供的禮物／優惠內容（例：飲品、商品、折扣或體驗）']) || '禮品待補';
@@ -145,8 +172,9 @@ export class SheetCampaignSync {
         merchantMap.delete(id);
         continue;
       }
-      if (clean(row['上架狀態']) === '上架') {
+      if (statusIsActive(row) && !hiddenInFormOrLink.has(id)) {
         explicitlyActiveIds.add(id);
+        explicitlyHiddenIds.delete(id);
       }
       const prev = merchantMap.get(id) || { id, category: '合作店家', icon: '⌂', color: 'sage', sample: false };
       const name = clean(row['店家名稱']) || prev.name;
